@@ -1,10 +1,10 @@
 #ifndef PROGRAM_H_INCLUDED
 #define PROGRAM_H_INCLUDED
 
-#include <cstdint>
-#include <cstring>
+#include <Tape.hpp>
 
-class EndlessTape;
+#include <cstddef>
+#include <cstdint>
 
 class Program
 {
@@ -14,7 +14,7 @@ private:
 	{
 		char Key;
 		char SetTo;
-		void (EndlessTape::*TapeMove)();
+		size_t offset;
 		uint16_t NextState;
 	};
 
@@ -49,7 +49,7 @@ public:
 	void ResetState(){Halted = false; CurrentState = 0;}
 	bool IsHalted(){return Halted;}
 
-	bool Execute(EndlessTape & TapeForExecution);
+	bool Execute(TM::Tape & TapeForExecution);
 
 	const char * GetError(){return ErrorString? ErrorString: ProgramIsValid? Halted? "Program has been halted!": "All is good.": "Program has not been initialized!";}
 };

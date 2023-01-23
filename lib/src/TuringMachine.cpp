@@ -1,6 +1,6 @@
 #include "TuringMachine.hpp"
 
-#include <EndlessTape.hpp>
+#include <cstring>
 
 size_t Program::WordLen(const char * String)
 {
@@ -253,7 +253,7 @@ bool Program::InitProgram(char ** ProgramString, size_t LinesCount)
 		{
 			StringShift = 0;
 			StringShift += WordLen(ProgramString[Line] + StringShift) + 1;
-			ProgramData[i][j].Key = ProgramString[Line][StringShift] == '_'? 0: ProgramString[Line][StringShift];
+			ProgramData[i][j].Key = ProgramString[Line][StringShift];
 			for(size_t k = 0; k < j; k++)
 				if(ProgramData[i][j].Key == ProgramData[i][k].Key)
 				{
@@ -282,20 +282,20 @@ bool Program::InitProgram(char ** ProgramString, size_t LinesCount)
 					return ERROR;
 				}
 			StringShift += 2;
-			ProgramData[i][j].SetTo = ProgramString[Line][StringShift] == '_'? 0: ProgramString[Line][StringShift];
+			ProgramData[i][j].SetTo = ProgramString[Line][StringShift];
 			StringShift += 2;
 			switch(ProgramString[Line][StringShift])
 			{
 				case '*':
-					ProgramData[i][j].TapeMove = EndlessTape::Stay;
+					ProgramData[i][j].offset = 0;
 					break;
 
 				case 'r':
-					ProgramData[i][j].TapeMove = EndlessTape::MoveRight;
+					ProgramData[i][j].offset = 1;
 					break;
 
 				case 'l':
-					ProgramData[i][j].TapeMove = EndlessTape::MoveLeft;
+					ProgramData[i][j].offset = -1;
 					break;
 
 				default:
@@ -414,15 +414,12 @@ void Program::Sort(char ** Strings, size_t n, size_t * Numbers)
 		}
 }
 
-bool Program::Execute(EndlessTape & TapeForExecution)
+bool Program::Execute(TM::Tape & TapeForExecution)
 {
 	if(!ProgramIsValid || Halted)
 		return ERROR;
 
-	char KeyForCheck = *TapeForExecution.GetCurrentSymbol();
-	if(KeyForCheck == ' ')
-		KeyForCheck = 0;
-
+	char KeyForCheck = *TapeForExecution;
 	int16_t KeyFinded = -1;
 	for(uint8_t i = 0; i < StatesEntriesCount[CurrentState]; i++)
 	{
@@ -440,8 +437,8 @@ bool Program::Execute(EndlessTape & TapeForExecution)
 	if(KeyFinded > -1)
 	{
 		if(ProgramData[CurrentState][KeyFinded].SetTo != '*')
-			TapeForExecution.PutSymbol(ProgramData[CurrentState][KeyFinded].SetTo);
-		(TapeForExecution.*ProgramData[CurrentState][KeyFinded].TapeMove)();
+			*TapeForExecution = ProgramData[CurrentState][KeyFinded].SetTo;
+		TapeForExecution.moveHead(ProgramData[CurrentState][KeyFinded].offset);
 		CurrentState = ProgramData[CurrentState][KeyFinded].NextState;
 	}
 	else
