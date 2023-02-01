@@ -1,57 +1,45 @@
-#ifndef PROGRAM_H_INCLUDED
-#define PROGRAM_H_INCLUDED
+#ifndef TM_TURING_MACHINE_INCLUDED
+#define TM_TURING_MACHINE_INCLUDED
 
 #include <Tape.hpp>
+#include <Program.hpp>
 
-#include <cstddef>
-#include <cstdint>
+#include <string>
 
-class Program
+namespace TM
 {
-private:
-
-	struct ProgramUnit
+	class TuringMachine
 	{
-		char Key;
-		char SetTo;
-		size_t offset;
-		uint16_t NextState;
+		private:
+			const TuringProgram &program;
+			Tape &tape;
+
+			StateHandle current_state;
+			bool is_halted;
+
+		public:
+			TuringMachine(const TuringMachine &) = delete;
+			TuringMachine(TuringMachine &&) = delete;
+			TuringMachine & operator=(const TuringMachine &) = delete;
+			TuringMachine & operator=(TuringMachine &&) = delete;
+
+			TuringMachine(const TuringProgram &program, Tape &tape) :
+				program(program),
+				tape(tape),
+				current_state(program.getInitialState()),
+				is_halted(false)
+			{}
+
+			void resetState(bool clear_tape = true)
+			{
+				if (clear_tape) tape.reset();
+				current_state = program.getInitialState();
+				is_halted = false;
+			}
+
+			bool execute(std::string &error_description, size_t max_steps = 10000);
+			bool isHalted() const { return is_halted; }
 	};
+}
 
-	ProgramUnit ** ProgramData;
-
-	uint8_t * StatesEntriesCount;
-	uint16_t StatesCount;
-	char ** StatesNames;
-	enum{HALT = 0xFFFF};
-	uint16_t CurrentState;
-	bool Halted;
-
-	bool ProgramIsValid;
-	char * ErrorString;
-
-	size_t WordLen(const char * String);
-	bool WordCmp(const char * String1, const char * String2);
-	void Sort(char ** Strings, size_t n, size_t * Numbers);
-
-public:
-	enum{ERROR = false, SUCCESS = true};
-
-	Program(Program &) = delete;
-	Program(Program &&) = delete;
-	Program & operator=(Program &) = delete;
-	Program & operator=(Program &&) = delete;
-
-	Program(): ProgramData(nullptr), StatesEntriesCount(nullptr), StatesCount(0), StatesNames(nullptr), CurrentState(0), Halted(false), ProgramIsValid(false), ErrorString(nullptr){}
-	~Program();
-
-	bool InitProgram(char ** ProgramString, size_t LinesCount);
-	void ResetState(){Halted = false; CurrentState = 0;}
-	bool IsHalted(){return Halted;}
-
-	bool Execute(TM::Tape & TapeForExecution);
-
-	const char * GetError(){return ErrorString? ErrorString: ProgramIsValid? Halted? "Program has been halted!": "All is good.": "Program has not been initialized!";}
-};
-
-#endif // PROGRAM_H_INCLUDED
+#endif // TM_TURING_MACHINE_INCLUDED
