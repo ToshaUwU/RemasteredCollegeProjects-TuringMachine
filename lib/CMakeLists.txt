@@ -37,5 +37,6 @@ target_include_directories(turingm PUBLIC ${SOURCES_DIRECTORY})
 
 target_sources(turingm
 	PRIVATE ${SOURCES_DIRECTORY}/Tape.cpp
+	PRIVATE ${SOURCES_DIRECTORY}/Program.cpp
 	PRIVATE ${SOURCES_DIRECTORY}/TuringMachine.cpp
 )
