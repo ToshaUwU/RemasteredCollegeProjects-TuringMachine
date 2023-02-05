@@ -95,7 +95,11 @@ namespace TM
 
 				auto it = state.actions.find(symbol);
 				if (it == state.actions.end())
-					return false;
+				{
+					it = state.actions.find('*');
+					if (it == state.actions.end())
+						return false;
+				}
 
 				output_action = it->second;
 				return true;

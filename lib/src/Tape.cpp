@@ -49,12 +49,14 @@ namespace TM
 	void Tape::resize()
 	{
 		size_t new_size = storage_size*resize_policy;
-		char *new_storage = new char[new_size + 1]{};
+		char *new_storage = new char[new_size + 1];
+		std::memset(new_storage, '_', new_size);
 		std::memcpy(new_storage + storage_size, storage, storage_size);
 
 		string_begin += storage_size;
 		string_end += storage_size;
-		current_symbol += storage_size;
+		new_storage[string_end] = '\0';
+		current_symbol += storage_size - 1;
 
 		delete [] storage;
 		storage = new_storage;
@@ -99,7 +101,7 @@ namespace TM
 
 	void Tape::moveHead(int8_t offset)
 	{
-		while (current_symbol + offset > storage_size)
+		while (storage_size <= current_symbol + offset)
 			resize();
 
 		current_symbol += offset;
@@ -126,4 +128,3 @@ namespace TM
 		storage[++string_end] = '\0';
 	}
 }
-

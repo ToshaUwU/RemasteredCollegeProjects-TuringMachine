@@ -31,7 +31,7 @@ namespace TM
 				return false;
 			}
 
-			current_symbol = action.new_symbol;
+			if (action.new_symbol != '*') current_symbol = action.new_symbol;
 			tape.moveHead(action.offset);
 			current_state = action.new_state;
 			if (current_state.isNull())

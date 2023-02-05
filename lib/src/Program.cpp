@@ -16,7 +16,8 @@ static bool isHaltState(const std::string &state_name)
 		(state_name[0] == 'H' || state_name[0] == 'h') &&
 		(state_name[1] == 'A' || state_name[1] == 'a') &&
 		(state_name[2] == 'L' || state_name[2] == 'l') &&
-		(state_name[3] == 'T' || state_name[3] == 't');
+		(state_name[3] == 'T' || state_name[3] == 't') &&
+		(state_name.size() == 4);
 }
 
 namespace TM
@@ -44,8 +45,8 @@ namespace TM
 
 		size_t line;
 		size_t column;
-		ParserFunctionPtr nextTokenParser;
 
+		ParserFunctionPtr nextTokenParser;
 		ParserFunctionPtr currentParser;
 	};
 
@@ -71,7 +72,7 @@ namespace TM
 		}
 
 		context.currentParser = context.nextTokenParser;
-		return true;
+		return (this->*context.nextTokenParser)(symbol, error_description, context);
 	}
 
 	bool TuringProgram::skipComment(char symbol, [[maybe_unused]] std::string &error_description, CompilationContext &context)
@@ -96,7 +97,7 @@ namespace TM
 
 			error_description =
 				std::string("Compilation error: symbol \'") + symbol +
-				"\'(line" + std::to_string(context.line) + ", column " + std::to_string(context.column) +
+				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
 				") is not allowed in state name";
 
 			return false;
@@ -107,7 +108,7 @@ namespace TM
 		{
 			error_description =
 				"Compilation error: invalid state name: \"" + state_name +
-				"\"(line" + std::to_string(context.line) + ", column " + std::to_string(context.column) +
+				"\"(line " + std::to_string(context.line) + ", column " + std::to_string(context.column - 4) +
 				"), this name is reserved for final state";
 
 			return false;
@@ -139,7 +140,7 @@ namespace TM
 		{
 			error_description =
 				std::string("Compilation error: symbol \'") + symbol +
-				"\'(line" + std::to_string(context.line) + ", column " + std::to_string(context.column) +
+				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
 				") is not allowed as state key";
 
 			return false;
@@ -167,7 +168,7 @@ namespace TM
 		{
 			error_description =
 				std::string("Compilation error: symbol \'") + symbol +
-				"\'(line" + std::to_string(context.line) + ", column " + std::to_string(context.column) +
+				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
 				") is not allowed as replace value";
 
 			return false;
@@ -226,7 +227,7 @@ namespace TM
 
 			error_description =
 				std::string("Compilation error: symbol \'") + symbol +
-				"\'(line" + std::to_string(context.line) + ", column " + std::to_string(context.column) +
+				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
 				") is not allowed in state name";
 
 			return false;
@@ -242,7 +243,7 @@ namespace TM
 				states.push_back({ state_name, {} });
 
 				size_t next_state_id = states.size() - 1;
-				context.states_references.insert({ state_name, { next_state_id } });
+				context.states_references.insert({ state_name, { next_state_id, context.current_state_id, context.line, context.column - state_name.size() } });
 				context.current_state_action.new_state = StateHandle(next_state_id, program_id);
 			}
 			else
@@ -307,6 +308,35 @@ namespace TM
 			}
 			else
 				column++;
+		}
+
+		const std::set<std::string> &defined_states = context.defined_states;
+		for (const auto & [state_name, reference_info] : context.states_references)
+		{
+			const std::string &undefined_state_name = states[reference_info.id].name;
+
+			auto it = defined_states.find(undefined_state_name);
+			if (it != defined_states.end())
+				continue;
+
+			if (undefined_state_name != "0")
+			{
+				const std::string &parent_state_name = states[reference_info.parent_state_id].name;
+
+				error_info.description = "Compilation error: state, named \"" + undefined_state_name + "\" is undefined, but referenced (first reference by state \"" +
+				parent_state_name + "\", line " + std::to_string(reference_info.line) + ", column " + std::to_string(reference_info.column) + ")";
+				error_info.line = reference_info.line;
+				error_info.column = reference_info.column;
+			}
+			else
+			{
+				error_info.description = "Compilation error: initial state is undefined (should have name \"0\")";
+				error_info.line = 0;
+				error_info.column = 0;
+			}
+
+			clear();
+			return false;
 		}
 
 		return true;
