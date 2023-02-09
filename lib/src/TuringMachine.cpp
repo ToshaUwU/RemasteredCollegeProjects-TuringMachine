@@ -2,7 +2,7 @@
 
 namespace TM
 {
-	bool TuringMachine::execute(std::string &error_description, size_t max_steps)
+	bool TuringMachine::execute(std::string &error_description, size_t iterations_limit, bool error_on_iterations_limit_exceed)
 	{
 		if (is_halted)
 		{
@@ -19,9 +19,10 @@ namespace TM
 		if (current_state.isNull())
 			current_state = program.getInitialState();
 
-		for (size_t i = 0; i < max_steps; i++)
+		for (size_t i = 0; i < iterations_limit; i++)
 		{
 			char &current_symbol = tape.getCurrentSymbol();
+
 			TuringProgram::Action action;
 			if (!program.findStateAction(current_state, current_symbol, action))
 			{
@@ -31,14 +32,22 @@ namespace TM
 				return false;
 			}
 
-			if (action.new_symbol != '*') current_symbol = action.new_symbol;
+			if (action.replace_symbol)
+				current_symbol = action.new_symbol;
+
 			tape.moveHead(action.offset);
 			current_state = action.new_state;
-			if (current_state.isNull())
+			if (action.is_final_state)
 			{
 				is_halted = true;
 				return true;
 			}
+		}
+
+		if (error_on_iterations_limit_exceed)
+		{
+			error_description = "Runtime error: exceed maximum iterations limit (set to " + std::to_string(iterations_limit) + ")";
+			return false;
 		}
 
 		return true;

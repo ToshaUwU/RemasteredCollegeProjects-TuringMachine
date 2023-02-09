@@ -37,7 +37,7 @@ namespace TM
 				is_halted = false;
 			}
 
-			bool execute(std::string &error_description, size_t max_steps = 10000);
+			bool execute(std::string &error_description, size_t iterations_limit, bool error_on_iterations_limit_exceed = true);
 			bool isHalted() const { return is_halted; }
 	};
 }

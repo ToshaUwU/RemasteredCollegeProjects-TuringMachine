@@ -5,8 +5,9 @@
 
 static constexpr char EndOfLine = '\n';
 static constexpr char Comment = ';';
+static constexpr char AnySymbol = '*';
 
-static bool isSpace(char symbol) { return std::isblank(static_cast<unsigned char>(symbol)); }
+static bool isSpace(char symbol) { return symbol == EndOfLine || std::isblank(static_cast<unsigned char>(symbol)); }
 
 static bool isAllowedStateNameSymbol(char symbol) { return symbol == '_' || symbol == '-' || std::isalnum(static_cast<unsigned char>(symbol)); }
 static bool isAllowedTokenSymbol(char symbol) { return symbol != Comment && std::isgraph(static_cast<unsigned char>(symbol)); }
@@ -18,6 +19,18 @@ static bool isHaltState(const std::string &state_name)
 		(state_name[2] == 'L' || state_name[2] == 'l') &&
 		(state_name[3] == 'T' || state_name[3] == 't') &&
 		(state_name.size() == 4);
+}
+
+template<typename... Args>
+static std::string formatString(const std::string &format, const Args&... args)
+{
+	int required_size = std::snprintf(nullptr, 0, format.c_str(), args...);
+	size_t size = static_cast<size_t>(required_size) + 1;
+
+	std::string output_string(size, '\0');
+	std::snprintf(output_string.data(), size, format.c_str(), args...);
+
+	return output_string;
 }
 
 namespace TM
@@ -50,41 +63,82 @@ namespace TM
 		ParserFunctionPtr currentParser;
 	};
 
+	enum class TuringProgram::CompilationError
+	{
+		NoError,
+
+		InvalidStateNameSymbol,
+		InvalidKeySymbol,
+		InvalidReplaceSymbol,
+		InvalidDirection,
+
+		StateHaveMultipleEntries,
+		StateNameEqualToFinalStateName,
+	};
+
+	std::string TuringProgram::formatErrorMessage(CompilationError error, char current_symbol, const CompilationContext &context)
+	{
+		std::string error_message = formatString("Compilation error(%d, %d): ", context.line, context.column);
+		switch (error)
+		{
+			case CompilationError::NoError:
+				break;
+
+			case CompilationError::InvalidStateNameSymbol:
+				error_message += formatString("symbol \'%c\' is not allowed in state name", current_symbol);
+				break;
+
+			case CompilationError::InvalidKeySymbol:
+				error_message += formatString("symbol \'%c\' is not allowed as state key", current_symbol);
+				break;
+
+			case CompilationError::InvalidReplaceSymbol:
+				error_message += formatString("symbol \'%c\' is not allowed as replace value", current_symbol);
+				break;
+
+			case CompilationError::InvalidDirection:
+				error_message += formatString("\'%c\' is not a valid direction", current_symbol);
+				break;
+
+			case CompilationError::StateHaveMultipleEntries:
+				error_message += formatString("state \"%s\" have multiple entries for symbol \'%c\'", context.current_state_name.c_str(), current_symbol);
+				break;
+
+			case CompilationError::StateNameEqualToFinalStateName:
+				error_message += formatString("invalid state, name \"%s\" is reserved for final state", context.current_state_name.c_str());
+				break;
+		}
+
+		return error_message;
+	}
+
 	/*
 	 */
-	bool TuringProgram::findNextToken(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::findNextToken(char symbol, CompilationContext &context)
 	{
 		if (isSpace(symbol))
-			return true;
+			return CompilationError::NoError;
 
-		if (symbol == EndOfLine || symbol == Comment)
+		if (symbol == Comment)
 		{
-			if (context.processing_state)
-			{
-				error_description = "Compilation error: unexpected end-of-line at line " + std::to_string(context.line) + ", state is incomplete";
-				return false;
-			}
-
-			if (symbol == Comment)
-				context.currentParser = &TuringProgram::skipComment;
-
-			return true;
+			context.currentParser = &TuringProgram::skipComment;
+			return CompilationError::NoError;
 		}
 
 		context.currentParser = context.nextTokenParser;
-		return (this->*context.nextTokenParser)(symbol, error_description, context);
+		return (this->*context.nextTokenParser)(symbol, context);
 	}
 
-	bool TuringProgram::skipComment(char symbol, [[maybe_unused]] std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::skipComment(char symbol, CompilationContext &context)
 	{
 		if (symbol != EndOfLine)
-			return true;
+			return CompilationError::NoError;
 
 		context.currentParser = &TuringProgram::findNextToken;
-		return true;
+		return CompilationError::NoError;
 	}
 
-	bool TuringProgram::parseStateName(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::parseStateName(char symbol, CompilationContext &context)
 	{
 		context.processing_state = true;
 		if (isAllowedTokenSymbol(symbol))
@@ -92,27 +146,15 @@ namespace TM
 			if (isAllowedStateNameSymbol(symbol))
 			{
 				context.current_state_name += symbol;
-				return true;
+				return CompilationError::NoError;
 			}
 
-			error_description =
-				std::string("Compilation error: symbol \'") + symbol +
-				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
-				") is not allowed in state name";
-
-			return false;
+			return CompilationError::InvalidStateNameSymbol;
 		}
 
 		const std::string &state_name = context.current_state_name;
 		if (isHaltState(state_name))
-		{
-			error_description =
-				"Compilation error: invalid state name: \"" + state_name +
-				"\"(line " + std::to_string(context.line) + ", column " + std::to_string(context.column - 4) +
-				"), this name is reserved for final state";
-
-			return false;
-		}
+			return CompilationError::StateNameEqualToFinalStateName;
 
 		context.defined_states.insert(state_name);
 
@@ -131,57 +173,49 @@ namespace TM
 		context.nextTokenParser = &TuringProgram::parseKeySymbol;
 		context.currentParser = &TuringProgram::findNextToken;
 
-		return true;
+		return CompilationError::NoError;
 	}
 
-	bool TuringProgram::parseKeySymbol(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::parseKeySymbol(char symbol, CompilationContext &context)
 	{
 		if (!isAllowedTokenSymbol(symbol))
-		{
-			error_description =
-				std::string("Compilation error: symbol \'") + symbol +
-				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
-				") is not allowed as state key";
-
-			return false;
-		}
+			return CompilationError::InvalidKeySymbol;
 
 		const State &current_state = states[context.current_state_id];
 
-		auto it = current_state.actions.find(symbol);
-		if (it != current_state.actions.end())
+		bool have_multiple_entries;
+		if (symbol != AnySymbol)
 		{
-			error_description = "Compilation error: state \"" + context.current_state_name + "\" have multiple entries for symbol \'" + symbol + "\'";
-			return false;
+			auto it = current_state.actions.find(symbol);
+			have_multiple_entries = (it != current_state.actions.end());
 		}
+		else
+			have_multiple_entries = current_state.have_default_action;
+
+		if (have_multiple_entries)
+			return CompilationError::StateHaveMultipleEntries;
 
 		context.current_state_key = symbol;
 		context.nextTokenParser = &TuringProgram::parseReplaceSymbol;
 		context.currentParser = &TuringProgram::findNextToken;
 
-		return true;
+		return CompilationError::NoError;
 	}
 
-	bool TuringProgram::parseReplaceSymbol(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::parseReplaceSymbol(char symbol, CompilationContext &context)
 	{
 		if (!isAllowedTokenSymbol(symbol))
-		{
-			error_description =
-				std::string("Compilation error: symbol \'") + symbol +
-				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
-				") is not allowed as replace value";
-
-			return false;
-		}
+			return CompilationError::InvalidReplaceSymbol;
 
 		context.current_state_action.new_symbol = symbol;
+		context.current_state_action.replace_symbol = (symbol != AnySymbol);
 		context.nextTokenParser = &TuringProgram::parseDirection;
 		context.currentParser = &TuringProgram::findNextToken;
 
-		return true;
+		return CompilationError::NoError;
 	}
 
-	bool TuringProgram::parseDirection(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::parseDirection(char symbol, CompilationContext &context)
 	{
 		switch (symbol)
 		{
@@ -205,37 +239,32 @@ namespace TM
 				break;
 
 			default:
-				error_description = "Compilation error: invalid direction (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) + ")";
-				return false;
+				return CompilationError::InvalidDirection;
 		}
 
 		context.nextTokenParser = &TuringProgram::parseNextStateName;
 		context.currentParser = &TuringProgram::findNextToken;
 
-		return true;
+		return CompilationError::NoError;
 	}
 
-	bool TuringProgram::parseNextStateName(char symbol, std::string &error_description, CompilationContext &context)
+	TuringProgram::CompilationError TuringProgram::parseNextStateName(char symbol, CompilationContext &context)
 	{
 		if (isAllowedTokenSymbol(symbol))
 		{
 			if (isAllowedStateNameSymbol(symbol))
 			{
 				context.next_state_name += symbol;
-				return true;
+				return CompilationError::NoError;
 			}
 
-			error_description =
-				std::string("Compilation error: symbol \'") + symbol +
-				"\' (line " + std::to_string(context.line) + ", column " + std::to_string(context.column) +
-				") is not allowed in state name";
-
-			return false;
+			return CompilationError::InvalidStateNameSymbol;
 		}
 
 		const std::string &state_name = context.next_state_name;
 
-		if (!isHaltState(state_name))
+		context.current_state_action.is_final_state = isHaltState(state_name);
+		if (!context.current_state_action.is_final_state)
 		{
 			auto it = context.states_references.find(state_name);
 			if (it == context.states_references.end())
@@ -249,10 +278,15 @@ namespace TM
 			else
 				context.current_state_action.new_state = StateHandle(it->second.id, program_id);
 		}
-		else
-			context.current_state_action.new_state = StateHandle();
 
-		states[context.current_state_id].actions.insert({ context.current_state_key, context.current_state_action });
+		State &current_state = states[context.current_state_id];
+		if (context.current_state_key == AnySymbol)
+		{
+			current_state.default_action = context.current_state_action;
+			current_state.have_default_action = true;
+		}
+		else
+			current_state.actions.insert({ context.current_state_key, context.current_state_action });
 
 		context.current_state_name.clear();
 		context.next_state_name.clear();
@@ -260,13 +294,17 @@ namespace TM
 		context.nextTokenParser = &TuringProgram::parseStateName;
 		context.currentParser = &TuringProgram::findNextToken;
 
-		return true;
+		return CompilationError::NoError;
 	}
 
 	/*
 	 */
-	bool TuringProgram::compile(const std::string &source_code, ErrorInfo &error_info)
+	bool TuringProgram::compile(const std::string &source_code, ErrorInfo &error_info, const std::string &initial_state_name)
 	{
+		error_info.description = "";
+		error_info.line = 0;
+		error_info.column = 0;
+
 		if (source_code.empty())
 		{
 			error_info.description = "Compilation error: no source code provided";
@@ -281,8 +319,8 @@ namespace TM
 		context.currentParser = &TuringProgram::findNextToken;
 		context.processing_state = false;
 
-		states.push_back({"0", {}});
-		context.states_references.insert({"0", {0}});
+		states.push_back({initial_state_name, {}});
+		context.states_references.insert({initial_state_name, {0}});
 
 		size_t line = 1;
 		size_t column = 1;
@@ -290,10 +328,11 @@ namespace TM
 		{
 			context.line = line;
 			context.column = column;
-			bool result = (this->*context.currentParser)(symbol, error_info.description, context);
+			CompilationError error = (this->*context.currentParser)(symbol, context);
 
-			if (!result)
+			if (error != CompilationError::NoError)
 			{
+				error_info.description = formatErrorMessage(error, symbol, context);
 				error_info.line = line;
 				error_info.column = column;
 
@@ -310,6 +349,12 @@ namespace TM
 				column++;
 		}
 
+		if (context.processing_state)
+		{
+			error_info.description = "Compilation error: unexpected end-of-file, state definition is incomplete";
+			return false;
+		}
+
 		const std::set<std::string> &defined_states = context.defined_states;
 		for (const auto & [state_name, reference_info] : context.states_references)
 		{
@@ -319,18 +364,24 @@ namespace TM
 			if (it != defined_states.end())
 				continue;
 
-			if (undefined_state_name != "0")
+			if (undefined_state_name != initial_state_name)
 			{
 				const std::string &parent_state_name = states[reference_info.parent_state_id].name;
 
-				error_info.description = "Compilation error: state, named \"" + undefined_state_name + "\" is undefined, but referenced (first reference by state \"" +
-				parent_state_name + "\", line " + std::to_string(reference_info.line) + ", column " + std::to_string(reference_info.column) + ")";
+				error_info.description = formatString
+				(
+					"Compilation error: state named \"%s\" is undefined (first reference by state \"%s\", line %d, column %d)",
+						undefined_state_name.c_str(),
+						parent_state_name.c_str(),
+						reference_info.line,
+						reference_info.column
+				);
 				error_info.line = reference_info.line;
 				error_info.column = reference_info.column;
 			}
 			else
 			{
-				error_info.description = "Compilation error: initial state is undefined (should have name \"0\")";
+				error_info.description = formatString("Compilation error: initial state is undefined (should have name \"%s\")", initial_state_name.c_str());
 				error_info.line = 0;
 				error_info.column = 0;
 			}

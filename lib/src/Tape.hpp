@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace TM
 {
@@ -16,8 +17,7 @@ namespace TM
 			constexpr static size_t resize_policy = 3;
 
 		private:
-			char *storage;
-			size_t storage_size;
+			std::vector<char> storage;
 
 			size_t string_begin;
 			size_t string_end;
@@ -25,21 +25,14 @@ namespace TM
 
 			int8_t last_move_offset;
 			char current_symbol_initial_value;
+			char empty_symbol;
 
-			Tape & copy(const Tape &tape);
-			Tape & extract(Tape &&tape);
 			void resize();
 
 		public:
-			Tape(const Tape &tape) { copy(tape); }
-			Tape(Tape &&tape) { extract(std::move(tape)); }
-			Tape(const std::string &initial_string = "", size_t initial_position = 0) : storage(nullptr) { reset(initial_string, initial_position); }
-			~Tape();
+			Tape(char default_symbol = '_', const std::string &initial_string = "", size_t initial_position = 0) { reset(default_symbol, initial_string, initial_position); }
 
-			Tape & operator=(const Tape &tape) { return copy(tape); }
-			Tape & operator=(Tape &&tape) { return extract(std::move(tape)); }
-
-			void reset(const std::string &initial_string = "", size_t initial_position = 0);
+			void reset(char default_symbol = '_', const std::string &initial_string = "", size_t initial_position = 0);
 
 			void moveHead(int8_t offset);
 			char & getCurrentSymbol() { return storage[current_symbol]; }
@@ -49,7 +42,8 @@ namespace TM
 
 			int8_t getLastOffset() const { return last_move_offset; }
 			bool isCurrentSymbolChanged() const { return current_symbol_initial_value != getCurrentSymbol(); }
-			const char * getString() const { return storage + string_begin; }
+			char getDefaultSymbol() const { return empty_symbol; }
+			const char * getString() const { return storage.data() + string_begin; }
 			size_t size() const { return string_end - string_begin; }
 			void trimRedundantSpaces();
 	};

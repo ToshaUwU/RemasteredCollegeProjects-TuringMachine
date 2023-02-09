@@ -41,8 +41,12 @@ namespace TM
 			struct Action
 			{
 				char new_symbol;
+				bool replace_symbol;
+
 				int8_t offset;
 				StateHandle new_state;
+
+				bool is_final_state;
 			};
 
 		private:
@@ -50,6 +54,9 @@ namespace TM
 			{
 				std::string name;
 				std::unordered_map<char, Action> actions;
+
+				bool have_default_action = false;
+				Action default_action = Action();
 			};
 
 			std::vector<State> states;
@@ -63,7 +70,8 @@ namespace TM
 
 			class Symbol;
 			struct CompilationContext;
-			using ParserFunctionType = bool (char symbol, std::string &error_description, CompilationContext &context);
+			enum class CompilationError;
+			using ParserFunctionType = CompilationError (char symbol, CompilationContext &context);
 			using ParserFunctionPtr = TuringProgram::ParserFunctionType TuringProgram::*;
 
 			ParserFunctionType findNextToken;
@@ -75,11 +83,13 @@ namespace TM
 			ParserFunctionType parseDirection;
 			ParserFunctionType parseNextStateName;
 
+			static std::string formatErrorMessage(CompilationError error, char current_symbol, const CompilationContext &context);
+
 		public:
 			TuringProgram() : program_id(0) {}
 			~TuringProgram() = default;
 
-			bool compile(const std::string &source_code, ErrorInfo &error_info);
+			bool compile(const std::string &source_code, ErrorInfo &error_info, const std::string &initial_state_name);
 
 			bool isValid() const { return program_id != 0; }
 			void clear() { states.clear(), program_id = 0; }
@@ -96,12 +106,14 @@ namespace TM
 				auto it = state.actions.find(symbol);
 				if (it == state.actions.end())
 				{
-					it = state.actions.find('*');
-					if (it == state.actions.end())
+					if (!state.have_default_action)
 						return false;
-				}
 
-				output_action = it->second;
+					output_action = state.default_action;
+				}
+				else
+					output_action = it->second;
+
 				return true;
 			}
 	};
