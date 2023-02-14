@@ -30,19 +30,19 @@ namespace TM
 		{
 			std::vector<char> new_storage(storage_required_size + 1, default_symbol);
 			storage = std::move(new_storage);
+			empty_symbol = default_symbol;
 		}
 
-		std::memcpy(storage.data() + block_size, initial_string.c_str(), block_size);
+		std::memcpy(storage.data() + block_size, initial_string.c_str(), initial_string.size());
 
 		string_begin = block_size;
-		string_end = string_begin + initial_string.size();
+		string_end = string_begin + initial_string.size() + 1;
 		storage[string_end] = '\0';
 
 		current_symbol = string_begin + std::min(initial_position, initial_string.size());
 
 		last_move_offset = 0;
 		current_symbol_initial_value = storage[current_symbol];
-		empty_symbol = default_symbol;
 	}
 
 	void Tape::moveHead(int8_t offset)
@@ -68,10 +68,10 @@ namespace TM
 		while (string_begin < current_symbol && storage[string_begin] == empty_symbol)
 			string_begin++;
 
-		storage[string_end--] = empty_symbol;
-		while (string_end > current_symbol && storage[string_end] == empty_symbol)
+		storage[string_end] = empty_symbol;
+		while (string_end > string_begin && storage[string_end - 1] == empty_symbol)
 			string_end--;
 
-		storage[++string_end] = '\0';
+		storage[string_end] = '\0';
 	}
 }
