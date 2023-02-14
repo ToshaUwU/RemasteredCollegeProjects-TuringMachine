@@ -1,0 +1,8 @@
+s1 0 1 r s2
+s1 1 1 l s3
+
+s2 0 1 l s1
+s2 1 1 r s2
+
+s3 0 1 l s2
+s3 1 1 0 halt
